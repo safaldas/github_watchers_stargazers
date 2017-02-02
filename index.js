@@ -1,6 +1,9 @@
 var request = require('request');
 var readFile = require('./utils').readFile
 var fs = require('fs')
+var colors = require('colors')
+var mkdirp = require('mkdirp')
+
 Date.prototype.getUnixTime = function () {
   return this.getTime() / 1000 | 0
 };
@@ -13,7 +16,7 @@ function options(path) {
     url: 'https://api.github.com' + path,
     headers: {
       'User-Agent': 'safal',
-      'Authorization': 'token 24d85c4e1f1e96ab6142b6a872c426a7464873bb'
+      'Authorization': 'token ' + process.env.GHTOKEN
     }
   };
 }
@@ -23,32 +26,9 @@ function options(path) {
 //////////////////////////// 
 
 
-function getWatchers(pageNumber) {
+function getWatchers(pageNumber, repoName) {
   return new Promise((resolve, reject) => {
-    let path = reposPath + `/subscribers?page=${pageNumber}&per_page=100`;
-
-    var userName = [];
-    request(options(path), function (error, response, body) {
-
-      if (!error && response.statusCode == 200) {
-
-        var info = JSON.parse(body);
-
-        info.forEach((user) => {
-          userName.push(user.login);
-        });
-        resolve(userName)
-      } else {
-        reject(error)
-      }
-    })
-  })
-}
-
-
-function getStarGazers(pageNumber) {
-  return new Promise((resolve, reject) => {
-    let path = reposPath + `/stargazers?page=${pageNumber}&per_page=100`;
+    let path = reposPath + repoName + `/subscribers?page=${pageNumber}&per_page=100`;
 
     var userName = [];
     request(options(path), function (error, response, body) {
@@ -67,22 +47,45 @@ function getStarGazers(pageNumber) {
   })
 }
 
-function getWatchersData(info) {
+
+function getStarGazers(pageNumber, repoName) {
+  return new Promise((resolve, reject) => {
+    let path = reposPath + repoName + `/stargazers?page=${pageNumber}&per_page=100`;
+
+    var userName = [];
+    request(options(path), function (error, response, body) {
+      if (!error && response.statusCode == 200) {
+
+        var info = JSON.parse(body);
+
+        info.forEach((user) => {
+          userName.push(user.login);
+        });
+        resolve(userName)
+      } else {
+        reject(error)
+      }
+    })
+  })
+}
+
+function getWatchersData(info, repoName) {
 
   return new Promise((resolve, reject) => {
 
-    //console.log(info)
+    // console.log(info)
     let watchers = info.subscribers_count;
 
     let totalPagesOfWatchers = Math.ceil(watchers / 100);
     let usersList = []
     let execCount = 0;
     for (let i = 1; i <= totalPagesOfWatchers; i++) {
-      getWatchers(i).then(data => {
+      getWatchers(i, repoName).then(data => {
         usersList = usersList.concat(data)
         execCount++;
         console.log(execCount, totalPagesOfWatchers)
         if (execCount == totalPagesOfWatchers) {
+          console.log(usersList)
           resolve(usersList)
         }
       }, err => {
@@ -95,17 +98,14 @@ function getWatchersData(info) {
 
 }
 
-function getStarGazersData(info) {
-
+function getStarGazersData(info, repoName) {
   return new Promise((resolve, reject) => {
-
-    //console.log(info)
     let starGazers = info.stargazers_count;
     let totalPagesOfStargazers = Math.ceil(starGazers / 100);
     let usersList = []
     let execStarCount = 0;
     for (let i = 1; i <= totalPagesOfStargazers; i++) {
-      getStarGazers(i).then(data => {
+      getStarGazers(i, repoName).then(data => {
         usersList = usersList.concat(data)
         execStarCount++;
         // console.log(execStarCount, totalPagesOfStargazers)
@@ -128,33 +128,32 @@ function findUsernames(repoName) {
   request(options(reposPath + repoName), function (error, response, body) {
     if (!error && response.statusCode == 200) {
       var info = JSON.parse(body);
-      ///////////////////////
-      //  Watchers///
-      //////////////////////
-      getWatchersData(info).then(UserNames => {
+      /////////////////////
+       Watchers///
+      ////////////////////
+      getWatchersData(info, repoName).then(UserNames => {
         console.log('total Watchers : ' + UserNames.length)
-        file = repoName + 'Watchers.txt'
+        file = repoName + '/' + repoName.split('/')[1] + 'Watchers.txt'
+        console.log(file)
         fs.writeFile(file, UserNames, (err) => {
           if (err) throw err;
-          console.log('It\'s saved!');
+          else console.log('Watchers list saved!');
         });
-
-
       }, err => {
         console.log(err);
       })
-      ///////////////////
-      /// starGazers
-      /////////////////
-      getStarGazersData(info).then(UserNames => {
+
+
+      // ///////////////////
+      // /// starGazers
+      // /////////////////
+      getStarGazersData(info, repoName).then(UserNames => {
         console.log('total StarGazers : ' + UserNames.length)
-        file = repoName + 'StarGazers.txt'
+        file = repoName + '/' + repoName.split('/')[1] + 'StarGazers.txt'
         fs.writeFile(file, UserNames, (err) => {
           if (err) throw err;
-          console.log('It\'s saved!');
+          console.log('StarGazers list saved!');
         });
-
-
       }, err => {
         console.log(err);
       })
@@ -168,36 +167,66 @@ function findUsernames(repoName) {
 /////////////////////////////////////////
 ////// get user Email ///////
 //////////////////////////////////
-function getUserEmail(Usernames) {
+function getUserEmail(username) {
+  console.log("Requesting userdata for ".yellow, username.yellow)
+  let time = new Date().getTime()
   return new Promise((resolve, reject) => {
-    let count = 1,
-      requestCount = 1 //since usernames length is 1 greater i think needs checking
-    console.log('Started requesting user Data..............\n')
-    for (let i = 0; i < Usernames.length; i++) {
-      request(options(usersPath + Usernames[i]), function (error, response, body) {
+    request(options(usersPath + username), function (error, response, body) {
+      if (error) {
+        console.log("Request Error".magenta, error)
+        reject(error)
+      } else {
         let status = {},
-          email
+          email = ''
+
         status.requestRemaining = parseInt(response.caseless.dict['x-ratelimit-remaining']),
           status.nextTime = parseInt(response.caseless.dict['x-ratelimit-reset'])
-        requestCount++
-        let user = JSON.parse(body)
-        email = user.email
-        console.log("Got user ", user.login, email)
-        if (email) {
-          email = email + ','
-          fs.appendFile('staremails.txt', email, (err) => { //  append to file for every returning
-            if (err) {
-              console.log('ERROR WRITING FILE\n')
-              throw err;
-            }
-            console.log('It\'s saved!', count++);
-          });
-        }
-        if (requestCount === Usernames.length) {
+        if (status.requestRemaining == 0) {
+          console.log('IN getUserEmail \n')
+          status.limitExceeded = true
+          console.log(status)
+          reject(status) // no more requests remaining
+        } else {
+          let user = JSON.parse(body)
+          email = user.email
+          console.log("Got user ".green, user.login.blue, email)
+          if (email) {
+            email = email + ','
+            fs.appendFile('emails.txt', email, (err) => { //  append to file for every returning
+              if (err) {
+                console.log('ERROR WRITING FILE\n')
+                throw err;
+              }
+              console.log('Saved '.gray, email.gray);
+            })
+          }
           resolve(status)
         }
-      })
+      }
+    })
+  })
 
+}
+
+function userEmailRequests(Usernames) {
+  return new Promise((resolve, reject) => {
+    console.log('Started requesting user Data..............\n'.green)
+    if (Usernames.length) {
+      console.log('Usernames left=>'.cyan, Usernames.length)
+      getUserEmail(Usernames[0])
+        .then(status => {
+          if (status.requestRemaining) {
+            userEmailRequests(Usernames.slice(1))
+          } else {
+            resolve(status)
+          }
+        })
+        .catch(status => {
+          console.log('In userEmailRequests=> ', status)
+          reject(status)
+        })
+    } else {
+      reject('Completed')
     }
 
   })
@@ -205,7 +234,6 @@ function getUserEmail(Usernames) {
 }
 
 function test() {
-
   console.log("In test function getting data........")
   return new Promise((resolve, reject) => {
     request(options('/user'), function (error, response, body) {
@@ -224,50 +252,70 @@ function test() {
 
 function scheduleGetEmailRequest(fileName) {
   let interval = 0
-  test().then(data => {
-    interval = data.nextTime - new Date().getUnixTime()
-    readFile(fileName).then((Usernames) => { //read file and get usernames
-      let totalUsers = Usernames.length,
-        dispatchCount = 0,
-        numberOfDispatches = Math.ceil(totalUsers / 5000); //get the number of times to schedule these  as 5000 per hour is only permitted
+  test()
+    .then(data => {
+      interval = 3600000
+      readFile(fileName)
+        .then((Usernames) => { //read file and get usernames
+          let totalUsers = Usernames.length,
+            dispatchCount = 0,
+            numberOfDispatches = Math.ceil(totalUsers / 5000); //get the number of times to schedule these  as 5000 per hour is only permitted
 
-      if (numberOfDispatches > 2) {
+          if (numberOfDispatches > 2) {
 
-        //call get email function numberOfDispatches times back to back        
-        let intervalId = setInterval(function () {
-          if (dispatchCount == numberOfDispatches) {
-            clearInterval(intervalId)
+            //call get email function numberOfDispatches times back to back        
+            let intervalId = setInterval(function dispatcher() {
+              if (dispatchCount == numberOfDispatches) {
+                clearInterval(intervalId)
+              } else {
+                let names = Usernames.slice(dispatchCount * 5000, dispatchCount * 5000 + 5000)
+                userEmailRequests(names)
+                  .then(status => {
+                    console.log(status)
+                  })
+                  .catch((count) => {
+                    console.log('count=', count)
+                  })
+              }
+              dispatchCount++
+              return dispatcher
+            }(), interval) //setInterval time here
           } else {
-            let names = Usernames.slice(dispatchCount * 5000, dispatchCount * 5000 + 5000)
-            getUserEmail(names).then(status => {
-              console.log(status)
-              interval = status.nextTime - new Date().getUnixTime()
-            }).catch(error => {
-              console.log(error)
-            })
+            userEmailRequests(Usernames)
+              .then(status => {
+                console.log('////////////////////////finished getting user mails //////////////////////////\n', status, 'interval = ', interval)
+              })
+              .catch((count) => {
+                console.log('count=', count)
+              })
           }
-          dispatchCount++
-        }, interval) //setInterval time here
-      } else {
-        getUserEmail(Usernames).then(status => {
-          console.log('////////////////////////finished getting user mails //////////////////////////\n', status, 'interval = ', interval)
-        }).catch(error => {
-          console.log(error)
         })
-      }
+        .catch(err => {
+          console.log('readfile =>', err)
+        })
     })
-  }).catch(err => {
-    console.log(err)
-  })
+    .catch(err => {
+      console.log('test error =>', err)
+    })
 
 }
 
-///////// use functions here ///////////////
-// test()
-//getUserEmail()
-var repoName = 'request/request' //facebook/react'
-let watchers= 'Watchers.txt',
+function prepare(repoName) {
+  mkdirp(repoName, function (err) {
+    if (err) console.error(err)
+    else {
+      console.log('Folder created')
+      findUsernames(repoName)
+    }
+  })
+}
+
+let repoName = 'request/request' //facebook/react'
+let watchers = 'Watchers.txt',
   stargazers = 'StarGazers.txt'
-let fileName = repoName + watchers
-findUsernames(repoName)
-//scheduleGetEmailRequest(fileName)
+let fileName = repoName + '/' + repoName.split('/')[1] + stargazers
+
+///////// use functions here ///////////////
+prepare(repoName)
+// scheduleGetEmailRequest(fileName)
+// test()
