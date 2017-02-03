@@ -3,9 +3,9 @@
 npm i
 ```
 first set the repoName
-    reponame = '/facebook/react' --->Only change this line with next repo
+  >  *reponame = '/facebook/react'* --->Only change this line with next repo
 
- ## uncomment one line at a time
+## uncomment one line at a time
 get usernames running the function `prepare(repoName)`  
     uncomment line and run file with `npm request`
 
