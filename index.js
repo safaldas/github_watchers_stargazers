@@ -83,9 +83,8 @@ function getWatchersData(info, repoName) {
       getWatchers(i, repoName).then(data => {
         usersList = usersList.concat(data)
         execCount++;
-        console.log(execCount, totalPagesOfWatchers)
+        console.log(execCount, ' of ', totalPagesOfWatchers, ' pages.')
         if (execCount == totalPagesOfWatchers) {
-          console.log(usersList)
           resolve(usersList)
         }
       }, err => {
@@ -128,9 +127,9 @@ function findUsernames(repoName) {
   request(options(reposPath + repoName), function (error, response, body) {
     if (!error && response.statusCode == 200) {
       var info = JSON.parse(body);
-      /////////////////////
-       Watchers///
-      ////////////////////
+      // /////////////////////
+      // Watchers ///
+      // ////////////////////
       getWatchersData(info, repoName).then(UserNames => {
         console.log('total Watchers : ' + UserNames.length)
         file = repoName + '/' + repoName.split('/')[1] + 'Watchers.txt'
@@ -167,7 +166,7 @@ function findUsernames(repoName) {
 /////////////////////////////////////////
 ////// get user Email ///////
 //////////////////////////////////
-function getUserEmail(username) {
+function getUserEmail(username, filename) {
   console.log("Requesting userdata for ".yellow, username.yellow)
   let time = new Date().getTime()
   return new Promise((resolve, reject) => {
@@ -187,16 +186,18 @@ function getUserEmail(username) {
           console.log(status)
           reject(status) // no more requests remaining
         } else {
-          let user = JSON.parse(body)
+          let user = JSON.parse(body),
+            fileData = ''
           email = user.email
           console.log("Got user ".green, user.login.blue, email)
           if (email) {
-            email = email + ','
-            fs.appendFile('emails.txt', email, (err) => { //  append to file for every returning
+            fileData = user.login + ',' + email + '\n'
+            fs.appendFile(filename, fileData, (err) => { //  append to file for every returning
               if (err) {
                 console.log('ERROR WRITING FILE\n')
                 throw err;
               }
+              console.log('Time taken = ', new Date().getTime() - time, 'ms')
               console.log('Saved '.gray, email.gray);
             })
           }
@@ -208,15 +209,22 @@ function getUserEmail(username) {
 
 }
 
-function userEmailRequests(Usernames) {
+function userEmailRequests(Usernames, filename) {
   return new Promise((resolve, reject) => {
     console.log('Started requesting user Data..............\n'.green)
     if (Usernames.length) {
       console.log('Usernames left=>'.cyan, Usernames.length)
-      getUserEmail(Usernames[0])
+      getUserEmail(Usernames[0], filename) //request api for email
         .then(status => {
           if (status.requestRemaining) {
-            userEmailRequests(Usernames.slice(1))
+            userEmailRequests(Usernames.slice(1), filename) //recursion after slicing the first one
+              .then(status => {
+                resolve(status)
+              })
+              .catch(status => {
+                console.log('In userEmailRequests recursed => ', status)
+                reject(status)
+              })
           } else {
             resolve(status)
           }
@@ -251,44 +259,27 @@ function test() {
 }
 
 function scheduleGetEmailRequest(fileName) {
-  let interval = 0
   test()
     .then(data => {
       interval = 3600000
       readFile(fileName)
         .then((Usernames) => { //read file and get usernames
           let totalUsers = Usernames.length,
-            dispatchCount = 0,
-            numberOfDispatches = Math.ceil(totalUsers / 5000); //get the number of times to schedule these  as 5000 per hour is only permitted
+            file = fileName.split('.')[0] + '.csv'
+          fs.writeFile(file, 'username,email\n', function (err, fd) { //openfile for writing and reading
+            if (err) console.log(err);
+            else {
+              console.log('Opened ', file, ' for writing.')
 
-          if (numberOfDispatches > 2) {
-
-            //call get email function numberOfDispatches times back to back        
-            let intervalId = setInterval(function dispatcher() {
-              if (dispatchCount == numberOfDispatches) {
-                clearInterval(intervalId)
-              } else {
-                let names = Usernames.slice(dispatchCount * 5000, dispatchCount * 5000 + 5000)
-                userEmailRequests(names)
-                  .then(status => {
-                    console.log(status)
-                  })
-                  .catch((count) => {
-                    console.log('count=', count)
-                  })
-              }
-              dispatchCount++
-              return dispatcher
-            }(), interval) //setInterval time here
-          } else {
-            userEmailRequests(Usernames)
-              .then(status => {
-                console.log('////////////////////////finished getting user mails //////////////////////////\n', status, 'interval = ', interval)
-              })
-              .catch((count) => {
-                console.log('count=', count)
-              })
-          }
+              userEmailRequests(Usernames, file) //when opened request for emails
+                .then(status => {
+                  console.log('////////////////////////finished getting user mails //////////////////////////\n', status)
+                })
+                .catch((count) => {
+                  console.log('count=', count)
+                })
+            }
+          })
         })
         .catch(err => {
           console.log('readfile =>', err)
@@ -310,12 +301,13 @@ function prepare(repoName) {
   })
 }
 
-let repoName = 'request/request' //facebook/react'
+let repoName = 'frankiesardo/icepick' //bumptech/glide
 let watchers = 'Watchers.txt',
   stargazers = 'StarGazers.txt'
-let fileName = repoName + '/' + repoName.split('/')[1] + stargazers
+let watchersFileName = repoName + '/' + repoName.split('/')[1] + watchers,
+  stargazersFileName = repoName + '/' + repoName.split('/')[1] + stargazers
 
 ///////// use functions here ///////////////
-prepare(repoName)
-// scheduleGetEmailRequest(fileName)
+// prepare(repoName)
+// scheduleGetEmailRequest(stargazersFileName)
 // test()
