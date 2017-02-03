@@ -4,9 +4,6 @@ var fs = require('fs')
 var colors = require('colors')
 var mkdirp = require('mkdirp')
 
-Date.prototype.getUnixTime = function () {
-  return this.getTime() / 1000 | 0
-};
 
 var reposPath = '/repos/';
 var usersPath = '/users/';
@@ -173,7 +170,9 @@ function getUserEmail(username, filename) {
     request(options(usersPath + username), function (error, response, body) {
       if (error) {
         console.log("Request Error".magenta, error)
-        reject(error)
+        console.log('Sending Next request, setting remaining to true ')
+        let status={requestRemaining:true}
+        resolve(status)
       } else {
         let status = {},
           email = ''
@@ -222,7 +221,6 @@ function userEmailRequests(Usernames, filename) {
                 resolve(status)
               })
               .catch(status => {
-                console.log('In userEmailRequests recursed => ', status)
                 reject(status)
               })
           } else {
@@ -230,11 +228,10 @@ function userEmailRequests(Usernames, filename) {
           }
         })
         .catch(status => {
-          console.log('In userEmailRequests=> ', status)
           reject(status)
         })
     } else {
-      reject('Completed')
+      resolve('Completed')
     }
 
   })
@@ -275,8 +272,8 @@ function scheduleGetEmailRequest(fileName) {
                 .then(status => {
                   console.log('////////////////////////finished getting user mails //////////////////////////\n', status)
                 })
-                .catch((count) => {
-                  console.log('count=', count)
+                .catch((error) => {
+                  console.log('errored to scheduleGetEmailRequest =', error)
                 })
             }
           })
@@ -301,7 +298,7 @@ function prepare(repoName) {
   })
 }
 
-let repoName = 'frankiesardo/icepick' //bumptech/glide
+let repoName = 'bumptech/glide' //frankiesardo/icepick
 let watchers = 'Watchers.txt',
   stargazers = 'StarGazers.txt'
 let watchersFileName = repoName + '/' + repoName.split('/')[1] + watchers,
@@ -309,5 +306,6 @@ let watchersFileName = repoName + '/' + repoName.split('/')[1] + watchers,
 
 ///////// use functions here ///////////////
 // prepare(repoName)
-// scheduleGetEmailRequest(stargazersFileName)
+// scheduleGetEmailRequest(watchersFileName)
+scheduleGetEmailRequest(stargazersFileName)
 // test()
